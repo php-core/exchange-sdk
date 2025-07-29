@@ -11,6 +11,8 @@ A PHP SDK for the [Currency Exchange API](https://github.com/fawazahmed0/exchang
 - ⚡ Fast and reliable with multiple CDN options
 - 🛠 Configurable endpoint preferences
 - 🔍 Comprehensive error handling
+- 💾 PSR-16 compatible caching support
+- ⚙️ Customizable HTTP client configuration
 
 ## Installation
 
@@ -32,7 +34,7 @@ $usdRates = Exchange::getLatestRates('usd');
 $eurUsdRate = Exchange::getLatestRate('eur', 'usd');
 
 // Get historical rates
-$historicalRates = Exchange::getHistoricalRates('2023-07-29', 'usd');
+$historicalRates = Exchange::getHistoricalRates('2024-03-06', 'usd');
 ```
 
 ## Usage Examples
@@ -44,7 +46,7 @@ use PHPCore\ExchangeSDK\Exchange;
 
 // Get all rates for USD
 $usdRates = Exchange::getLatestRates('usd');
-// Returns: ['date' => '2023-07-29', 'usd' => ['eur' => 0.85, 'gbp' => 0.73, ...]]
+// Returns: ['date' => '2024-03-06', 'usd' => ['eur' => 0.85, 'gbp' => 0.73, ...]]
 
 // Get specific currency pair rate
 $eurUsdRate = Exchange::getLatestRate('eur', 'usd');
@@ -55,12 +57,12 @@ $eurUsdRate = Exchange::getLatestRate('eur', 'usd');
 
 ```php
 // Get historical rates for a specific date
-$historicalRates = Exchange::getHistoricalRates('2023-07-29', 'usd');
-// Returns: ['date' => '2023-07-29', 'usd' => ['eur' => 0.84, ...]]
+$historicalRates = Exchange::getHistoricalRates('2024-03-06', 'usd');
+// Returns: ['date' => '2024-03-06', 'usd' => ['eur' => 0.84, ...]]
 
 // Get historical rate for a specific currency pair
-$historicalEurUsd = Exchange::getHistoricalRate('2023-07-29', 'eur', 'usd');
-// Returns: 1.17 (float)
+$historicalEurUsd = Exchange::getHistoricalRate('2024-03-06', 'eur', 'usd');
+// Returns: 1.08854773 (float)
 ```
 
 ### Configuring Endpoints
@@ -73,7 +75,58 @@ Exchange::setPreferredEndpoint(Exchange::ENDPOINT_CLOUDFLARE);
 $rates = Exchange::getLatestRates('usd', Exchange::ENDPOINT_JSDELIVR);
 ```
 
-### Advanced Usage
+### Caching Support
+
+The SDK supports PSR-16 Simple Cache for storing exchange rates. By default, it uses Symfony's FilesystemAdapter.
+
+#### Default Cache Configuration
+
+```php
+// Initialize with default filesystem cache (24-hour TTL)
+Exchange::initCache();
+
+// Rates will be automatically cached
+$rates = Exchange::getLatestRates('usd');
+```
+
+#### Custom Cache Configuration
+
+```php
+use Symfony\Component\Cache\Adapter\FilesystemAdapter;
+use Symfony\Component\Cache\Psr16Cache;
+
+// Create a custom filesystem cache
+$filesystemAdapter = new FilesystemAdapter(
+    'exchange-rates',    // namespace
+    3600,               // TTL (1 hour)
+    '/path/to/cache'    // custom directory
+);
+$cache = new Psr16Cache($filesystemAdapter);
+
+// Initialize SDK with custom cache
+Exchange::initCache($cache);
+```
+
+#### Using Redis Cache
+
+```php
+use Symfony\Component\Cache\Adapter\RedisAdapter;
+use Symfony\Component\Cache\Psr16Cache;
+
+$redis = RedisAdapter::createConnection('redis://localhost');
+$cache = new Psr16Cache(new RedisAdapter($redis));
+
+Exchange::initCache($cache, 3600); // Cache for 1 hour
+```
+
+#### Cache Management
+
+```php
+// Clear the cache
+Exchange::clearCache();
+```
+
+### Custom HTTP Client Configuration
 
 ```php
 use GuzzleHttp\Client;
@@ -81,16 +134,13 @@ use GuzzleHttp\Client;
 // Configure custom Guzzle client
 $client = new Client([
     'timeout' => 15,
-    'proxy' => 'http://proxy.example.com'
+    'connect_timeout' => 10,
+    'headers' => [
+        'User-Agent' => 'MyApp/1.0'
+    ]
 ]);
 
 Exchange::setClient($client);
-
-// Get rates with custom configuration
-$rates = Exchange::getLatestRates('usd');
-
-// Clear custom client
-Exchange::clearClient();
 ```
 
 ## Available Methods
@@ -105,7 +155,9 @@ Exchange::clearClient();
 ### Configuration Methods
 
 - `setPreferredEndpoint(string $endpoint): void`
+- `initCache(?CacheInterface $cache = null, int $ttl = 86400): void`
 - `setClient(Client $client): void`
+- `clearCache(): void`
 - `clearClient(): void`
 
 ## Endpoint Constants
@@ -134,14 +186,12 @@ try {
 
 ## Fallback Mechanism
 
-The SDK implements a robust fallback mechanism in the following order:
+The SDK implements a robust fallback mechanism:
 
-1. Try preferred endpoint with minified JSON
-2. Try preferred endpoint with regular JSON
-3. Try fallback endpoint with minified JSON
-4. Try fallback endpoint with regular JSON
-
-This ensures maximum availability and reliability of the service.
+1. Try preferred endpoint
+2. If preferred endpoint fails, try fallback endpoint
+3. Results are cached for subsequent requests
+4. Cache duration is configurable
 
 ## Testing
 
@@ -155,6 +205,7 @@ Run the test suite with PHPUnit:
 
 - PHP 7.4 or higher
 - Guzzle HTTP Client 7.0 or higher
+- PSR-16 Simple Cache implementation
 
 ## License
 

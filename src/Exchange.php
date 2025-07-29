@@ -5,6 +5,8 @@ namespace PHPCore\ExchangeSDK;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use Exception;
+use PHPCore\ExchangeSDK\Cache\CacheManager;
+use Psr\SimpleCache\CacheInterface;
 
 class Exchange
 {
@@ -12,6 +14,7 @@ class Exchange
     public const ENDPOINT_CLOUDFLARE = 'cloudflare';
     
     private const API_VERSION = 'v1';
+    public const SDK_VERSION = 'v1.0.1';
 
     private static array $baseUrls = [
         'jsdelivr' => 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@%s/' . self::API_VERSION,
@@ -20,6 +23,15 @@ class Exchange
 
     private static ?Client $client = null;
     private static string $preferredEndpoint = self::ENDPOINT_JSDELIVR;
+    private static ?CacheManager $cache = null;
+
+    /**
+     * Initialize the cache manager
+     */
+    public static function initCache(?CacheInterface $cache = null, int $ttl = 86400): void
+    {
+        self::$cache = new CacheManager($cache, $ttl);
+    }
 
     /**
      * Get or create the Guzzle HTTP client instance
@@ -30,10 +42,24 @@ class Exchange
             self::$client = new Client([
                 'timeout' => 10,
                 'connect_timeout' => 5,
-                'http_errors' => false
+                'http_errors' => false,
+                'headers' => [
+                    'User-Agent' => 'ExchangeSDK/' . self::SDK_VERSION
+                ]
             ]);
         }
         return self::$client;
+    }
+
+    /**
+     * Get or create the cache manager
+     */
+    private static function getCache(): CacheManager
+    {
+        if (self::$cache === null) {
+            self::initCache();
+        }
+        return self::$cache;
     }
 
     /**
@@ -142,13 +168,27 @@ class Exchange
      */
     private static function makeRequest(string $path, string $date, ?string $endpoint = null): ?array
     {
-        $client = self::getClient();
         $selectedEndpoint = $endpoint ?? self::$preferredEndpoint;
+        $cache = self::getCache();
+        
+        // Generate cache key
+        $cacheKey = $cache->getCacheKey($selectedEndpoint, $date, $path);
+        
+        // Try to get from cache first
+        $cachedData = $cache->get($cacheKey);
+        if ($cachedData !== null) {
+            return $cachedData;
+        }
 
-        // Try preferred endpoint first
-        $primaryUrl = sprintf(self::$baseUrls[$selectedEndpoint], $date) . $path . '.json';
-        $response = self::tryRequest($client, $primaryUrl);
+        // If not in cache, make API request
+        $client = self::getClient();
+        
+        // Try preferred endpoint
+        $baseUrl = sprintf(self::$baseUrls[$selectedEndpoint], $date);
+        $response = self::tryRequest($client, $baseUrl . $path . '.json');
+        
         if ($response !== null) {
+            $cache->set($cacheKey, $response);
             return $response;
         }
 
@@ -158,7 +198,13 @@ class Exchange
             : self::ENDPOINT_JSDELIVR;
             
         $fallbackUrl = sprintf(self::$baseUrls[$fallbackEndpoint], $date) . $path . '.json';
-        return self::tryRequest($client, $fallbackUrl);
+        $response = self::tryRequest($client, $fallbackUrl);
+        
+        if ($response !== null) {
+            $cache->set($cacheKey, $response);
+        }
+
+        return $response;
     }
 
     /**
@@ -199,5 +245,15 @@ class Exchange
     public static function clearClient(): void
     {
         self::$client = null;
+    }
+
+    /**
+     * Clear the cache
+     */
+    public static function clearCache(): void
+    {
+        if (self::$cache !== null) {
+            self::$cache->clear();
+        }
     }
 }

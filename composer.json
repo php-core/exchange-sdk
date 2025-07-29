@@ -1,0 +1,36 @@
+{
+    "name": "php-core/exchange-sdk",
+    "version": "1.0.0",
+    "description": "A PHP SDK for the currency exchange rates API with fallback support",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "PHPCore\\ExchangeSDK\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "PHPCore\\ExchangeSDK\\Tests\\": "tests/"
+        }
+    },
+    "authors": [
+        {
+            "name": "php-core",
+            "email": "dev@php-core.com",
+            "homepage": "https://php-core.com"
+        }
+    ],
+    "require": {
+        "php": ">=7.4",
+        "guzzlehttp/guzzle": "^7.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.0",
+        "mockery/mockery": "^1.5"
+    },
+    "minimum-stability": "stable",
+    "scripts": {
+        "test": "./vendor/bin/phpunit"
+    }
+}
